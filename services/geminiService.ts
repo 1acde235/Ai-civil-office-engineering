@@ -2,6 +2,25 @@
 import { GoogleGenAI, Type, type Schema } from "@google/genai";
 import { TakeoffResult, TakeoffItem, RebarItem, TechnicalQuery, ScheduleTask, AppMode } from "../types";
 
+// --- HELPER: API KEY VALIDATION ---
+const getApiKey = (): string => {
+    // 1. Try Local Storage (User entered via Settings)
+    const localKey = localStorage.getItem('constructAi_customApiKey');
+    if (localKey && localKey.startsWith('AIza')) {
+        return localKey;
+    }
+
+    // 2. Try Environment Variable (Vite/Vercel)
+    // process.env.API_KEY is injected by Vite at build time via vite.config.ts
+    const envKey = process.env.API_KEY;
+    
+    if (envKey && envKey.trim() !== '' && !envKey.includes('undefined')) {
+        return envKey;
+    }
+
+    throw new Error("API_KEY_MISSING");
+};
+
 // --- HELPER: ROBUST JSON PARSER WITH AUTO-REPAIR ---
 const safeJsonParse = (input: string): any => {
     let clean = input.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -57,6 +76,9 @@ const retryOperation = async <T>(
     let status = error.status || error.code || (error.response ? error.response.status : 0);
     let message = (error.message || "").toLowerCase();
     
+    // Pass through our custom API Key error immediately
+    if (message.includes("api_key_missing") || message.includes("api key")) throw error;
+
     if (error.error && typeof error.error === 'object') {
         status = error.error.code || status;
         if (error.error.message) message += " " + error.error.message.toLowerCase();
@@ -333,7 +355,9 @@ const SUPPORTED_VISUAL_MIME_TYPES = [
 ];
 
 export const generateInsights = async (items: TakeoffItem[]): Promise<Insight[]> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // API KEY CHECK
+    const apiKey = getApiKey();
+    const ai = new GoogleGenAI({ apiKey });
     const model = "gemini-3-pro-preview";
 
     // Summarize items for token efficiency
@@ -395,7 +419,9 @@ export const generateSchedule = async (
   startDate: string = new Date().toISOString().split('T')[0]
 ): Promise<TakeoffResult> => {
     
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY }); 
+    // API KEY CHECK
+    const apiKey = getApiKey();
+    const ai = new GoogleGenAI({ apiKey }); 
     const model = "gemini-3-pro-preview";
 
     const parts: any[] = [];
@@ -733,7 +759,9 @@ export const generateTakeoff = async (
   contractMimeType?: string
 ): Promise<TakeoffResult> => {
   
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // API KEY CHECK
+  const apiKey = getApiKey();
+  const ai = new GoogleGenAI({ apiKey });
   const model = "gemini-3-pro-preview"; 
   
   const rebarInstruction = includeRebar 

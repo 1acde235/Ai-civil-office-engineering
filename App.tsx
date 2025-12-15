@@ -13,7 +13,7 @@ import { TutorialModal } from './components/TutorialModal';
 import { ChatSupport } from './components/ChatSupport'; 
 import { generateTakeoff, generateSchedule, FileInput } from './services/geminiService';
 import { AppState, TakeoffResult, UploadedFile, AppMode } from './types';
-import { Wallet, CheckCircle, Phone, Shield, FileText, Mail, Calculator, FileCheck, ArrowRight, ChevronLeft, BookOpen, CalendarClock, ArrowLeft, RotateCw } from 'lucide-react';
+import { Wallet, CheckCircle, Phone, Shield, FileText, Mail, Calculator, FileCheck, ArrowRight, ChevronLeft, BookOpen, CalendarClock, ArrowLeft, RotateCw, Settings } from 'lucide-react';
 import { Logo } from './components/Logo';
 import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
@@ -114,6 +114,9 @@ const App: React.FC = () => {
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem('constructAi_customApiKey') || '');
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [initialRedeemCode, setInitialRedeemCode] = useState<string>('');
   const [takeoffData, setTakeoffData] = useState<TakeoffResult | null>(null);
@@ -197,6 +200,12 @@ const App: React.FC = () => {
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  const handleSaveApiKey = () => {
+      localStorage.setItem('constructAi_customApiKey', customApiKey);
+      showToast("API Key Saved! You can now use the app.");
+      setShowSettings(false);
   };
 
   // --- DATA PORTABILITY LOGIC ---
@@ -573,8 +582,14 @@ const App: React.FC = () => {
       setAppState(AppState.RESULTS);
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "An error occurred during AI analysis. Please try again.");
-      setAppState(AppState.INSTRUCTIONS);
+      const errMsg = err.message || "An error occurred during AI analysis. Please try again.";
+      setError(errMsg);
+      
+      // CRITICAL FIX: If API key is missing, go to error state directly to show button
+      if (errMsg.includes("API Key") || errMsg.includes("API_KEY")) {
+          setShowSettings(true); // Open settings immediately
+      }
+      setAppState(AppState.ERROR);
     } finally {
         setIsMerging(false);
     }
@@ -629,7 +644,7 @@ const App: React.FC = () => {
       } catch (err: any) {
           console.error(err);
           setError("Quick Reschedule Failed: " + err.message);
-          setAppState(AppState.RESULTS); // Go back to results on error
+          setAppState(AppState.ERROR); // Go back to error state
       }
   };
 
@@ -740,6 +755,14 @@ const App: React.FC = () => {
             </div>
             
             <div className="flex items-center space-x-4">
+              <button 
+                onClick={() => setShowSettings(true)}
+                className="text-slate-500 hover:text-slate-800 transition-colors p-2 rounded-full hover:bg-slate-100"
+                title="Settings & API Key"
+              >
+                  <Settings className="w-5 h-5" />
+              </button>
+
               <button 
                 onClick={() => setShowTutorial(true)}
                 className="text-slate-500 hover:text-slate-800 transition-colors p-2 rounded-full hover:bg-slate-100 hidden md:block"
@@ -915,15 +938,51 @@ const App: React.FC = () => {
 
         {appState === AppState.ERROR && (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-6">
-             <div className="bg-red-50 p-6 rounded-full mb-4">
+             <div className="bg-red-50 p-6 rounded-full mb-4 animate-bounce">
                  <Shield className="w-12 h-12 text-red-500" />
              </div>
              <h3 className="text-xl font-bold text-slate-800 mb-2">Analysis Failed</h3>
              <p className="text-slate-500 max-w-md mb-6">{error || "An unexpected error occurred."}</p>
-             <button onClick={() => setAppState(AppState.UPLOAD)} className="bg-slate-900 text-white px-6 py-2 rounded-lg font-bold">Try Again</button>
+             <div className="flex space-x-3">
+                 <button onClick={() => setAppState(AppState.UPLOAD)} className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-6 py-2 rounded-lg font-bold">Try Again</button>
+                 {(error?.includes("API_KEY") || error?.includes("API Key")) && (
+                     <button onClick={() => setShowSettings(true)} className="bg-brand-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-brand-700">Enter API Key</button>
+                 )}
+             </div>
           </div>
         )}
       </main>
+
+      {/* SETTINGS MODAL (API KEY) */}
+      {showSettings && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+              <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+                  <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-lg font-bold text-slate-900 flex items-center">
+                          <Settings className="w-5 h-5 mr-2 text-slate-600" /> App Settings
+                      </h3>
+                      <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600"><Settings className="w-5 h-5" /></button>
+                  </div>
+                  <div className="mb-6">
+                      <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Custom Gemini API Key</label>
+                      <input 
+                          type="password" 
+                          placeholder="AIzaSy..." 
+                          className="w-full p-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 outline-none mb-2"
+                          value={customApiKey}
+                          onChange={(e) => setCustomApiKey(e.target.value)}
+                      />
+                      <p className="text-xs text-slate-400">
+                          Use this if your deployed environment variable is missing. It will be saved securely in your browser's Local Storage.
+                      </p>
+                  </div>
+                  <div className="flex justify-end space-x-3">
+                      <button onClick={() => setShowSettings(false)} className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700">Cancel</button>
+                      <button onClick={handleSaveApiKey} className="px-6 py-2 bg-brand-600 text-white text-sm font-bold rounded-lg hover:bg-brand-700">Save Key</button>
+                  </div>
+              </div>
+          </div>
+      )}
 
       {/* MODALS */}
       {showPaymentModal && (
